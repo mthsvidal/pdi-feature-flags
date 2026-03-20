@@ -12,51 +12,13 @@ public class ContractsController : ControllerBase
 {
     private readonly ILogger<ContractsController> _logger;
     private readonly IContractProcessor _contractProcessor;
-    private readonly IFeatureFlagService _featureFlagService;
 
     public ContractsController(
         ILogger<ContractsController> logger,
-        IContractProcessor contractProcessor,
-        IFeatureFlagService featureFlagService)
+        IContractProcessor contractProcessor)
     {
         _logger = logger;
         _contractProcessor = contractProcessor;
-        _featureFlagService = featureFlagService;
-    }
-
-    /// <summary>
-    /// Endpoint para testar a feature flag
-    /// </summary>
-    [HttpGet("test-feature-flag/{assetHolder}")]
-    public async Task<IActionResult> TestFeatureFlag(string assetHolder)
-    {
-        var contextJson = System.Text.Json.JsonSerializer.Serialize(
-            new
-            {
-                entityId = $"test|{assetHolder}",
-                originalAssetHolder = assetHolder
-            }
-        );
-        
-        var isEnabled = await _featureFlagService.IsEnabledAsync(
-            "process-contract-specifications",
-            contextJson,
-            defaultValue: false
-        );
-
-        _logger.LogInformation(
-            "Feature flag test: AssetHolder={AssetHolder}, IsEnabled={IsEnabled}",
-            assetHolder,
-            isEnabled
-        );
-
-        return Ok(new 
-        { 
-            featureName = "process-contract-specifications",
-            assetHolder = assetHolder,
-            isEnabled = isEnabled,
-            context = contextJson
-        });
     }
 
     /// <summary>

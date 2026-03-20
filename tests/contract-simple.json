@@ -1,0 +1,35 @@
+{
+  "idempotencyKey": "test-ff-simple",
+  "contracts": [
+    {
+      "bankAccount": {
+        "accountType": "CC",
+        "ispb": "99999999",
+        "documentNumber": "11444555000181",
+        "accountDigit": "X3",
+        "documentType": "CNPJ",
+        "branch": "3232",
+        "account": "00121"
+      },
+      "signatureDate": "2026-03-18",
+      "effectType": "warranty",
+      "assetHolder": "11222333000181",
+      "percentageValue": "0",
+      "reference": "CG_SIMPLE",
+      "effectStrategy": "specific",
+      "contractUniqueIdentifier": "12100000123",
+      "warrantyType": "fiduciary",
+      "contractSpecifications": [
+        {
+          "receivableDebtor": "27770000000180",
+          "paymentScheme": "MCC",
+          "originalAssetHolder": "16501555000157",
+          "expectedSettlementDate": "2026-02-02",
+          "effectValue": "101",
+          "finalExpectedSettlementDate": "2026-02-02",
+          "initialExpectedSettlementDate": "2026-02-02"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Docker volumes
+postgres_data/
+flipt_data/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS Code workspace storage
+.history/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# .NET build outputs
+**/bin/
+**/obj/
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Logs and diagnostics
+*.log
+logs/
+
+# Test and coverage
+TestResults/
+coverage/
+coverage.*
+*.coverage
+*.trx
+
+# Local temp/cache
+*.tmp
+*.temp
+*.cache
+
+# Docker local overrides
+docker-compose.override.yml

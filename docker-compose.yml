@@ -1,0 +1,24 @@
+services:
+  flipt:
+    image: ${FLIPT_IMAGE}
+    container_name: ${FLIPT_CONTAINER_NAME}
+    environment:
+      FLIPT_AUTHENTICATION_REQUIRED: ${FLIPT_AUTHENTICATION_REQUIRED}
+      FLIPT_AUTHENTICATION_METHODS_TOKEN_ENABLED: ${FLIPT_AUTHENTICATION_METHODS_TOKEN_ENABLED}
+      FLIPT_AUTHENTICATION_METHODS_TOKEN_BOOTSTRAP_TOKEN: ${FLIPT_API_TOKEN}
+    ports:
+      - "${FLIPT_HOST_PORT}:${FLIPT_CONTAINER_PORT}"
+    volumes:
+      - flipt_data:${FLIPT_DATA_PATH}
+    networks:
+      - flipt_network
+
+volumes:
+  flipt_data:
+    name: ${FLIPT_DATA_VOLUME_NAME}
+    driver: ${FLIPT_VOLUME_DRIVER}
+
+networks:
+  flipt_network:
+    name: ${FLIPT_NETWORK_NAME}
+    driver: ${FLIPT_NETWORK_DRIVER}

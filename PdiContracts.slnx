@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PdiContracts.Api/PdiContracts.Api.csproj" />
+    <Project Path="src/PdiContracts.Domain/PdiContracts.Domain.csproj" />
+  </Folder>
+</Solution>

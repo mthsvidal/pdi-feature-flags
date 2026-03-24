@@ -1,4 +1,8 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
 using PdiContracts.Domain.Models;
 
 namespace PdiContracts.Domain.Services;
@@ -9,17 +13,65 @@ namespace PdiContracts.Domain.Services;
 public class FeatureFlagService : IFeatureFlagService
 {
     private readonly IFliptClient _fliptClient;
+    private readonly IDistributedCache _cache;
+    private readonly ILogger<FeatureFlagService> _logger;
 
-    public FeatureFlagService(IFliptClient fliptClient)
+    public FeatureFlagService(
+        IFliptClient fliptClient,
+        IDistributedCache cache,
+        ILogger<FeatureFlagService> logger)
     {
         _fliptClient = fliptClient ?? throw new ArgumentNullException(nameof(fliptClient));
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc/>
     public async Task<bool> IsEnabledAsync(string featureName, string? contextJson = null, bool defaultValue = false)
     {
+        var cacheKey = BuildCacheKey(featureName, contextJson, defaultValue);
+
+        try
+        {
+            var cachedValue = await _cache.GetStringAsync(cacheKey);
+            if (bool.TryParse(cachedValue, out var parsedCachedValue))
+            {
+                return parsedCachedValue;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Falha ao consultar cache Redis para a feature {FeatureName}", featureName);
+        }
+
         var context = ParseContext(contextJson);
-        return await _fliptClient.IsEnabledAsync(featureName, context, defaultValue);
+        var isEnabled = await _fliptClient.IsEnabledAsync(featureName, context, defaultValue);
+
+        try
+        {
+            await _cache.SetStringAsync(
+                cacheKey,
+                isEnabled.ToString(),
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1)
+                });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Falha ao gravar cache Redis para a feature {FeatureName}", featureName);
+        }
+
+        return isEnabled;
+    }
+
+    private static string BuildCacheKey(string featureName, string? contextJson, bool defaultValue)
+    {
+        var safeContext = contextJson ?? string.Empty;
+        var keyInput = $"{featureName}|{defaultValue}|{safeContext}";
+        var keyBytes = SHA256.HashData(Encoding.UTF8.GetBytes(keyInput));
+        var keyHash = Convert.ToHexString(keyBytes);
+        return $"flipt:feature:{keyHash}";
     }
 
     /// <summary>

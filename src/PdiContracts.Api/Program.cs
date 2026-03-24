@@ -36,6 +36,13 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     });
 
+var redisConnectionString = Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING") ?? "localhost:6379";
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConnectionString;
+    options.InstanceName = "pdi-contracts:";
+});
+
 // Configurar Flipt Feature Flags usando variaveis de ambiente
 builder.Services.AddFliptClient(settings =>
 {

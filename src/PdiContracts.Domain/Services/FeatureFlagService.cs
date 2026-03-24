@@ -54,7 +54,7 @@ public class FeatureFlagService : IFeatureFlagService
                 isEnabled.ToString(),
                 new DistributedCacheEntryOptions
                 {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1)
                 });
         }
         catch (Exception ex)
@@ -67,11 +67,51 @@ public class FeatureFlagService : IFeatureFlagService
 
     private static string BuildCacheKey(string featureName, string? contextJson, bool defaultValue)
     {
-        var safeContext = contextJson ?? string.Empty;
-        var keyInput = $"{featureName}|{defaultValue}|{safeContext}";
-        var keyBytes = SHA256.HashData(Encoding.UTF8.GetBytes(keyInput));
-        var keyHash = Convert.ToHexString(keyBytes);
-        return $"flipt:feature:{keyHash}";
+        // Se houver contextJson, extrai todos os campos EXCETO entityId
+        var cacheKeyPart = "default";
+        
+        if (!string.IsNullOrWhiteSpace(contextJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(contextJson);
+                var root = document.RootElement;
+                
+                var contextValues = new List<string>();
+                
+                foreach (var property in root.EnumerateObject())
+                {
+                    // Pula entityId - não faz parte da chave
+                    if (property.Name.Equals("entityId", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    
+                    var value = property.Value.ValueKind switch
+                    {
+                        JsonValueKind.String => property.Value.GetString() ?? "",
+                        JsonValueKind.Number => property.Value.GetRawText(),
+                        JsonValueKind.True => "true",
+                        JsonValueKind.False => "false",
+                        _ => ""
+                    };
+                    
+                    if (!string.IsNullOrEmpty(value))
+                    {
+                        contextValues.Add($"{property.Name}_{value}");
+                    }
+                }
+                
+                if (contextValues.Any())
+                {
+                    cacheKeyPart = string.Join("-", contextValues);
+                }
+            }
+            catch (JsonException)
+            {
+                cacheKeyPart = "invalid";
+            }
+        }
+        
+        return $"flipt:feature:{featureName}-{cacheKeyPart}";
     }
 
     /// <summary>

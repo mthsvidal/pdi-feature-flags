@@ -207,10 +207,7 @@ public class ContractProcessor : IContractProcessor
         var context = new
         {
             entityId,
-            idempotencyKey = request.IdempotencyKey,
-            contractReference = contract.Reference,
-            originalAssetHolder = specification.OriginalAssetHolder,
-            paymentScheme = specification.PaymentScheme
+            originalAssetHolder = specification.OriginalAssetHolder
         };
 
         return JsonSerializer.Serialize(context);

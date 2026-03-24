@@ -44,43 +44,56 @@ cd src/PdiContracts.Api
 dotnet run
 ```
 
-Swagger: `http://localhost:5000`
+Swagger: `http://localhost:5211`
+
+## Testes com k6
+
+Para executar os testes de carga e validação:
+
+```bash
+cd tests
+k6 run load-test.js
+```
 
 ## Configuracao da API
 
-A API le as variaveis abaixo no startup:
+A API le as variaveis abaixo no startup (veja `.env.example`):
 
-- `FLIPT_URL`
-- `FLIPT_API_TOKEN`
-- `FLIPT_NAMESPACE_KEY`
+- `FLIPT_URL`: URL do servidor Flipt
+- `FLIPT_API_TOKEN`: Token de autenticacao do Flipt
+- `FLIPT_NAMESPACE_KEY`: Namespace das flags no Flipt
+- `FLIPT_TIMEOUT_SECONDS`: Timeout para requisicoes ao Flipt
+- `REDIS_CONNECTION_STRING`: Endereco do Redis para cache
 
 ## Exemplo de uso
 
-No processamento, a API avalia a flag `process-contract-specifications` no Flipt por CS:
+No processamento, a API avalia a flag `process-contract-specifications` no Flipt para cada especificacao de contrato:
 
 ```csharp
 var contextJson = JsonSerializer.Serialize(new
 {
     entityId = $"{request.IdempotencyKey}|{contract.Reference}|{specification.OriginalAssetHolder}|{specification.PaymentScheme}",
-    idempotencyKey = request.IdempotencyKey,
-    contractReference = contract.Reference,
-    originalAssetHolder = specification.OriginalAssetHolder,
-    paymentScheme = specification.PaymentScheme
+    originalAssetHolder = specification.OriginalAssetHolder
 });
 
 var isEnabled = await _featureFlagService.IsEnabledAsync(
-    "process-contract-specifications",
+    FeatureFlagNames.ProcessContractSpecifications,
     contextJson,
     defaultValue: false
 );
+
+// Cache: chave gerada automaticamente a partir do JSON
+// Exemplo: flipt:feature:ProcessContractSpecifications-originalAssetHolder_09015607000110
+// TTL: 1 minuto
 ```
 
 ## Observacoes
 
 - O cliente usa a API REST do Flipt via `POST /evaluate/v1/batch`.
 - A autenticacao usa header `Authorization: Bearer <FLIPT_API_TOKEN>`.
-- Para segmentacao e rollout gradual, prefira contexto em formato campo/valor (JSON com chaves explicitas), nao texto puro.
+- **Cache em Redis**: Chave de cache e construida a partir dos campos do contexto JSON (exceto `entityId`), permitindo reutilizacao entre requisicoes com mesmo contexto.
 - O `entityId` deve ser estavel por CS para o split percentual permanecer deterministico.
+- TTL do cache: 1 minuto
 
 ## Cadastro da flag no Flipt
 
@@ -92,7 +105,7 @@ Passo 1 - Criar a feature flag
 - Defina a key como `process-contract-specifications`.
 - Marque a flag como habilitada.
 
-Passo 2 e 3 - Criar o segmento com constraint
+Passo 2 - Criar o segmento com constraint
 
 - Va em Segments -> New Segment.
 - Use match type: ANY. Isso significa que qualquer constraint verdadeiro ja inclui o usuario.
@@ -103,15 +116,15 @@ Passo 2 e 3 - Criar o segmento com constraint
 - Para adicionar outros CNPJs no futuro, basta adicionar mais constraints com o mesmo operador `==` no mesmo segmento.
 - Como o match type e ANY, qualquer CNPJ que bater entra.
 
-Passo 4 - Rollout por segmento (CNPJs especificos)
+Passo 3 - Rollout por segmento (CNPJs especificos)
 
 - Volte a sua flag e va em Rollouts -> New Rollout.
 - Escolha o tipo Segment.
 - Aponte para o segmento `cnpj-allowlist`.
-- Defina o valor como `true` e coloque Rank 1.
+- Defina o valor como `true`.
 - Isso garante prioridade maxima: esses CNPJs sempre recebem a flag ativa.
 
-Passo 5 - Rollout gradual por threshold
+Passo 4 - Rollout gradual por threshold
 
 - Adicione um segundo rollout do tipo Threshold.
 - Comece com 0%, valor `true`, Rank 2.

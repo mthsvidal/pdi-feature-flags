@@ -65,84 +65,90 @@ public class ContractProcessor : IContractProcessor
     /// </summary>
     private async Task<Contract> ProcessContractSpecificationsAsync(Contract contract, ContractRequest request, ProcessingSummary summary)
     {
-        var allSpecifications = contract.ContractSpecifications ?? new List<ContractSpecification>();
+        var processedContract = new Contract
+        {
+            Reference = contract.Reference,
+            EffectType = contract.EffectType,
+            BankAccount = contract.BankAccount,
+            ContractSpecifications = contract.ContractSpecifications ?? new List<ContractSpecification>()
+        };
+
+        var allSpecifications = processedContract.ContractSpecifications;
 
         if (!allSpecifications.Any())
         {
-            return new Contract
-            {
-                Reference = contract.Reference,
-                EffectType = contract.EffectType,
-                BankAccount = contract.BankAccount,
-                ContractSpecifications = allSpecifications
-            };
+            return processedContract;
         }
 
-        // Avalia a feature no Flipt para cada CS usando entityId + context.
-        var notificationTasks = allSpecifications.Select(async specification =>
+        // 1) Avalia cada CS e guarda o resultado de ativação por especificação.
+        var specificationIsActive = new Dictionary<ContractSpecification, bool>();
+
+        foreach (var specification in allSpecifications)
         {
             var contextJson = BuildEvaluationContextJson(request, contract, specification);
-            var shouldNotify = await _featureFlagService.IsEnabledAsync(
+            var isActive = await _featureFlagService.IsEnabledAsync(
                 "process-contract-specifications",
                 contextJson,
                 defaultValue: false
             );
 
-            return new { Specification = specification, ShouldNotify = shouldNotify };
-        }).ToList();
+            specificationIsActive[specification] = isActive;
+        }
 
-        var results = await Task.WhenAll(notificationTasks);
+        // 2) Cria o dicionário: originalAssetHolder -> isActive.
+        // Regra: o assetHolder é ativo se pelo menos uma CS dele estiver ativa.
+        
+        var assetHolderIsActive = allSpecifications
+            .GroupBy(specification => specification.OriginalAssetHolder)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Any(specification => specificationIsActive[specification])
+            );
 
-        // Agrupa especificações por Asset Holder e conta as que serão notificadas
-        var groupsByAssetHolder = allSpecifications
-            .GroupBy(s => s.OriginalAssetHolder)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var notifiedByAssetHolder = results
-            .Where(r => r.ShouldNotify)
-            .GroupBy(r => r.Specification.OriginalAssetHolder)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        // Adiciona os grupos ao resumo
-        foreach (var kvp in groupsByAssetHolder)
+        // 3) Faz a varredura das CSs para montar resumo e disparar notificação.
+        var summaryByAssetHolder = new Dictionary<string, AssetHolderGroup>();
+        foreach (var specification in allSpecifications)
         {
-            summary.TotalContractSpecifications += kvp.Value;
+            var holder = specification.OriginalAssetHolder;
+            var isAssetHolderActive = assetHolderIsActive.TryGetValue(holder, out var holderActive) && holderActive;
+            var isSpecificationActive = specificationIsActive[specification];
 
-            var notifiedCount = notifiedByAssetHolder.TryGetValue(kvp.Key, out var value)
-                ? value
-                : 0;
+            summary.TotalContractSpecifications++;
 
-            summary.TotalNotifiedContractSpecifications += notifiedCount;
-
-            var group = new AssetHolderGroup
+            if (!summaryByAssetHolder.TryGetValue(holder, out var group))
             {
-                OriginalAssetHolder = kvp.Key,
-                Count = kvp.Value,
-                NotifiedCount = notifiedCount
-            };
+                group = new AssetHolderGroup
+                {
+                    OriginalAssetHolder = holder,
+                    Count = 0,
+                    NotifiedCount = 0
+                };
+
+                summaryByAssetHolder[holder] = group;
+            }
+
+            group.Count++;
+
+            if (isAssetHolderActive && isSpecificationActive)
+            {
+                summary.TotalNotifiedContractSpecifications++;
+                group.NotifiedCount++;
+                await NotifyAssetHolderAsync(contract, specification);
+            }
+        }
+
+        foreach (var group in summaryByAssetHolder.Values.OrderBy(g => g.OriginalAssetHolder))
+        {
             summary.SpecificationsByAssetHolder.Add(group);
         }
 
-        // Notifica para as especificações habilitadas
-        foreach (var result in results.Where(r => r.ShouldNotify))
-        {
-            await NotifyAssetHolderAsync(contract, result.Specification);
-        }
-
-        // Retorna contrato com TODAS as especificações
-        return new Contract
-        {
-            Reference = contract.Reference,
-            EffectType = contract.EffectType,
-            BankAccount = contract.BankAccount,
-            ContractSpecifications = allSpecifications
-        };
+        return processedContract;
     }
 
     /// <summary>
     /// Notifica a credenciadora sobre uma especificação de contrato processada
     /// </summary>
-    private async Task NotifyAssetHolderAsync(Contract contract, ContractSpecification specification)
+    private Task NotifyAssetHolderAsync(Contract contract, ContractSpecification specification)
     {
         // TODO: Implementar chamada real ao serviço de notificação da credenciadora
 
@@ -154,7 +160,7 @@ public class ContractProcessor : IContractProcessor
         Console.WriteLine(message);
         Console.ForegroundColor = originalColor;
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private static string BuildEvaluationContextJson(ContractRequest request, Contract contract, ContractSpecification specification)

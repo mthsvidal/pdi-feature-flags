@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using PdiContracts.Api.Models;
 using PdiContracts.Api.Mappers;
-using PdiContracts.Domain.Models;
 using PdiContracts.Domain.Services;
 
 namespace PdiContracts.Api.Controllers;

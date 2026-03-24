@@ -69,9 +69,11 @@ public class FliptClient : IFliptClient
             }
         };
 
+        var requestJson = JsonSerializer.Serialize(requestBody);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
+            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiToken);
 

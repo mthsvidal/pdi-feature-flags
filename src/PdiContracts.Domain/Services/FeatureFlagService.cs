@@ -54,7 +54,7 @@ public class FeatureFlagService : IFeatureFlagService
                 isEnabled.ToString(),
                 new DistributedCacheEntryOptions
                 {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1)
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
                 });
         }
         catch (Exception ex)

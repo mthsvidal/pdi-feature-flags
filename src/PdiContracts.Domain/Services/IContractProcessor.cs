@@ -78,8 +78,7 @@ public class AssetHolderGroup
     public int Count { get; set; }
 
     /// <summary>
-    /// Quantidade de Contract Specifications notificadas para este Asset Holder
+    /// Caminho do arquivo de notificação armazenado para este Asset Holder (null se não notificado)
     /// </summary>
-    public int NotifiedCount { get; set; }
-
+    public string? NotificationPath { get; set; }
 }

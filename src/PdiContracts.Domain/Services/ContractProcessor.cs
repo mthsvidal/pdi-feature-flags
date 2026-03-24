@@ -105,36 +105,34 @@ public class ContractProcessor : IContractProcessor
                 group => group.Any(specification => specificationIsActive[specification])
             );
 
-        // 3) Faz a varredura das CSs para montar resumo e disparar notificação.
+        // 3) Agrupa CSs por holder e monta resumo, disparando notificação 1x por holder ativo.
+        var specificationsByHolder = allSpecifications
+            .GroupBy(s => s.OriginalAssetHolder)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var summaryByAssetHolder = new Dictionary<string, AssetHolderGroup>();
-        foreach (var specification in allSpecifications)
+        foreach (var holderGroup in specificationsByHolder)
         {
-            var holder = specification.OriginalAssetHolder;
-            var isAssetHolderActive = assetHolderIsActive.TryGetValue(holder, out var holderActive) && holderActive;
-            var isSpecificationActive = specificationIsActive[specification];
+            var holder = holderGroup.Key;
+            var holderSpecs = holderGroup.Value;
+            var isHolderActive = assetHolderIsActive.TryGetValue(holder, out var active) && active;
 
-            summary.TotalContractSpecifications++;
-
-            if (!summaryByAssetHolder.TryGetValue(holder, out var group))
+            var group = new AssetHolderGroup
             {
-                group = new AssetHolderGroup
-                {
-                    OriginalAssetHolder = holder,
-                    Count = 0,
-                    NotifiedCount = 0
-                };
+                OriginalAssetHolder = holder,
+                Count = holderSpecs.Count,
+                NotificationPath = null
+            };
 
-                summaryByAssetHolder[holder] = group;
+            summary.TotalContractSpecifications += group.Count;
+
+            if (isHolderActive)
+            {
+                group.NotificationPath = await NotifyAssetHolderAsync(request, contract, holder, holderSpecs);
+                summary.TotalNotifiedContractSpecifications += group.Count;
             }
 
-            group.Count++;
-
-            if (isAssetHolderActive && isSpecificationActive)
-            {
-                summary.TotalNotifiedContractSpecifications++;
-                group.NotifiedCount++;
-                await NotifyAssetHolderAsync(contract, specification);
-            }
+            summaryByAssetHolder[holder] = group;
         }
 
         foreach (var group in summaryByAssetHolder.Values.OrderBy(g => g.OriginalAssetHolder))
@@ -146,21 +144,55 @@ public class ContractProcessor : IContractProcessor
     }
 
     /// <summary>
-    /// Notifica a credenciadora sobre uma especificação de contrato processada
+    /// Notifica a credenciadora armazenando o contrato filtrado apenas com CSs do originalAssetHolder ativo
     /// </summary>
-    private Task NotifyAssetHolderAsync(Contract contract, ContractSpecification specification)
+    private async Task<string> NotifyAssetHolderAsync(
+        ContractRequest request,
+        Contract contract,
+        string originalAssetHolder,
+        List<ContractSpecification> holderSpecifications)
     {
-        // TODO: Implementar chamada real ao serviço de notificação da credenciadora
+        // Cria contrato filtrado com apenas as CSs do holder
+        var contractForHolder = new Contract
+        {
+            Reference = contract.Reference,
+            EffectType = contract.EffectType,
+            BankAccount = contract.BankAccount,
+            ContractSpecifications = holderSpecifications
+        };
 
-        var message =
-            $"Notificando asset holder para especificação de contrato: Reference={contract.Reference}, OriginalAssetHolder={specification.OriginalAssetHolder}, PaymentScheme={specification.PaymentScheme}";
+        var notificationsRoot = @"C:\temp";
+        var holderFolder = SanitizePathSegment(originalAssetHolder);
+        var idempotencyFolder = SanitizePathSegment(request.IdempotencyKey);
+        var targetDirectory = Path.Combine(notificationsRoot, holderFolder, idempotencyFolder);
 
-        var originalColor = Console.ForegroundColor;
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(message);
-        Console.ForegroundColor = originalColor;
+        Directory.CreateDirectory(targetDirectory);
 
-        return Task.CompletedTask;
+        var fileName = $"{SanitizePathSegment(contract.Reference)}.json";
+        var filePath = Path.Combine(targetDirectory, fileName);
+
+        var payload = new
+        {
+            request.IdempotencyKey,
+            ContractReference = contract.Reference,
+            contract.EffectType,
+            contract.BankAccount,
+            OriginalAssetHolder = originalAssetHolder,
+            ContractSpecifications = holderSpecifications,
+            GeneratedAtUtc = DateTime.UtcNow
+        };
+
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(filePath, json);
+
+        _logger.LogInformation(
+            "Contrato filtrado armazenado em {Path}. Reference={Reference}, OriginalAssetHolder={OriginalAssetHolder}, CsCount={Count}",
+            filePath,
+            contract.Reference,
+            originalAssetHolder,
+            holderSpecifications.Count);
+
+        return filePath;
     }
 
     private static string BuildEvaluationContextJson(ContractRequest request, Contract contract, ContractSpecification specification)
@@ -182,5 +214,16 @@ public class ContractProcessor : IContractProcessor
 
         return JsonSerializer.Serialize(context);
     }
-}
 
+    private static string SanitizePathSegment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "unknown";
+        }
+
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(value.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray());
+        return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
+    }
+}

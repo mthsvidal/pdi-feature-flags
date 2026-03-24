@@ -93,7 +93,7 @@ public class ContractsController : ControllerBase
                             {
                                 g.OriginalAssetHolder,
                                 g.Count,
-                                g.NotifiedCount
+                                g.NotificationPath
                             })
                             .OrderBy(g => g.OriginalAssetHolder)
                             .ToList()

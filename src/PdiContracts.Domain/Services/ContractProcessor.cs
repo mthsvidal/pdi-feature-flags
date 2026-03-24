@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using PdiContracts.Domain.Constants;
 using PdiContracts.Domain.Models;
 
 namespace PdiContracts.Domain.Services;
@@ -87,7 +88,7 @@ public class ContractProcessor : IContractProcessor
         {
             var contextJson = BuildEvaluationContextJson(request, contract, specification);
             var isActive = await _featureFlagService.IsEnabledAsync(
-                "process-contract-specifications",
+                FeatureFlagNames.ProcessContractSpecifications,
                 contextJson,
                 defaultValue: false
             );
